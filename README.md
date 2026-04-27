@@ -88,13 +88,3 @@ This project is licensed under the [MIT License](LICENSE).
 
 Contributions are always welcome! If you have any feature suggestions, report bugs, or raise a PR, we'd love to have you on board. Just open an issue to get started.
 
----
-
-## Contact
-
-Maintained by **Shruti Agarwal**. For any inquiries, feel free to connect:
-
-- GitHub: [shrutiagarwal28](https://github.com/shrutiagarwal28)
-- Email: [your-email@example.com] (replace with your contact)
-
-Let's build something amazing together!
