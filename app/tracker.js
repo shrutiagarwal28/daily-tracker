@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import styles from './tracker.module.css'
-import { supabase } from '../lib/supabase'
+import { dbGetToday, dbGetAllLogs, dbUpsertLog, dbGetReview, dbUpsertReview } from '../lib/tracker-db'
 
 // ─── DATA ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ const GREEN_TASKS = [
 ]
 
 const YELLOW_TASKS = {
-  block: 'Pick ONE thing — that\'s it',
+  block: "Pick ONE thing — that's it",
   emoji: '🌙',
   items: [
     { id: 'y1', label: '1 easy LeetCode problem' },
@@ -79,8 +79,7 @@ const RULES = [
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
-const todayKey   = () => new Date().toISOString().split('T')[0]
-const dayName    = () => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]
+const todayKey = () => new Date().toISOString().split('T')[0]
 
 function getGreeting() {
   const h = new Date().getHours()
@@ -102,35 +101,157 @@ function shortDay(dateStr) {
     .toLocaleDateString('en-US', { weekday: 'short' })
 }
 
-// ─── STORAGE ─────────────────────────────────────────────────────────────────
+// ─── SUB-COMPONENTS ──────────────────────────────────────────────────────────
 
-async function dbGetToday(date) {
-  const { data } = await supabase.from('daily_logs').select('*').eq('date', date).single()
-  return data
-}
-
-async function dbGetAllLogs() {
-  const { data } = await supabase.from('daily_logs').select('date, mode, done')
-  return data || []
-}
-
-async function dbUpsertLog(date, mode, completedItems, done, noteText) {
-  await supabase.from('daily_logs').upsert(
-    { date, mode, completed_items: completedItems, done, note_text: noteText, updated_at: new Date().toISOString() },
-    { onConflict: 'date' }
+function TaskRow({ item, checked, color, onToggle }) {
+  return (
+    <div onClick={onToggle} className={styles.taskRow}>
+      <div className={styles.checkbox} style={{ borderColor: color, background: checked ? color : 'transparent' }}>
+        {checked && <span className={styles.checkMark}>✓</span>}
+      </div>
+      <span className={styles.taskLabel} style={{
+        textDecoration: checked ? 'line-through' : 'none',
+        color: checked ? 'var(--text4)' : 'var(--text)',
+      }}>
+        {item.label}
+      </span>
+    </div>
   )
 }
 
-async function dbGetReview(date) {
-  const { data } = await supabase.from('reviews').select('*').eq('date', date).single()
-  return data
+function NoteField({ value, onChange, onBlur, placeholder, label = 'Anything else you did?', style }) {
+  return (
+    <div className={styles.noteBlock} style={style}>
+      <label className={styles.noteLabel}>{label}</label>
+      <textarea
+        className={styles.reviewInput}
+        value={value}
+        onChange={onChange}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        rows={2}
+      />
+    </div>
+  )
 }
 
-async function dbUpsertReview(date, q1, q2, q3) {
-  await supabase.from('reviews').upsert({ date, q1, q2, q3 }, { onConflict: 'date' })
+function OffDay({ noteText, onNoteChange, onNoteBlur, onChangeMode }) {
+  return (
+    <div className={styles.offDay}>
+      <div className={styles.offEmoji}>😴</div>
+      <h2 className={styles.offTitle}>Rest Day</h2>
+      <p className={styles.offBody}>
+        No LeetCode. No Substack. No LinkedIn.<br />
+        This is what makes the other 6 days possible.
+      </p>
+      <NoteField
+        value={noteText}
+        onChange={onNoteChange}
+        onBlur={onNoteBlur}
+        placeholder="Something you read, thought about, or just want to remember..."
+        label="Anything you want to note?"
+        style={{ textAlign: 'left' }}
+      />
+      <button onClick={onChangeMode} className={styles.changeBtn}>Change mode</button>
+    </div>
+  )
 }
 
-// ─── COMPONENT ───────────────────────────────────────────────────────────────
+function GreenDay({ todayData, onToggle, onNoteChange, onNoteBlur, onDone, onChangeMode }) {
+  return (
+    <>
+      <div className={styles.modeHeader}>
+        <span className={styles.pillGreen}>🌱 Green Day</span>
+        {todayData.done && <span className={styles.pillDone}>✓ Done</span>}
+        <button onClick={onChangeMode} className={styles.changeBtn}>change</button>
+      </div>
+
+      {GREEN_TASKS.map(group => (
+        <div key={group.id} className={styles.taskGroup}>
+          <div className={styles.taskGroupHead}>
+            <span>{group.emoji}</span>
+            <span className={styles.taskGroupTitle}>{group.block}</span>
+            <span className={styles.durationTag}>{group.duration}</span>
+            {group.type === 'pick-one' && <span className={styles.pickOneTag}>pick one</span>}
+          </div>
+          {group.items.map(item => (
+            <TaskRow
+              key={item.id}
+              item={item}
+              checked={!!todayData.completedItems?.[item.id]}
+              color={group.color}
+              onToggle={() => onToggle(item.id, group.type === 'pick-one', group.items)}
+            />
+          ))}
+        </div>
+      ))}
+
+      <NoteField
+        value={todayData.noteText || ''}
+        onChange={onNoteChange}
+        onBlur={onNoteBlur}
+        placeholder="Note it here — a different problem, article, video, anything..."
+      />
+
+      {!todayData.done
+        ? <button onClick={onDone} className={styles.doneBtn}>Mark today as done ✓</button>
+        : (
+          <div className={styles.completedCard}>
+            <div className={styles.completedTitle}>Today: done. 🔥</div>
+            <p className={styles.completedBody}>Streak is alive. Go rest now.</p>
+          </div>
+        )
+      }
+    </>
+  )
+}
+
+function YellowDay({ todayData, onToggle, onNoteChange, onNoteBlur, onDone, onChangeMode }) {
+  return (
+    <>
+      <div className={styles.modeHeader}>
+        <span className={styles.pillPurple}>🌙 Yellow Day</span>
+        {todayData.done && <span className={styles.pillDone}>✓ Done</span>}
+        <button onClick={onChangeMode} className={styles.changeBtn}>change</button>
+      </div>
+
+      <div className={styles.taskGroup}>
+        <div className={styles.taskGroupHead}>
+          <span>{YELLOW_TASKS.emoji}</span>
+          <span className={styles.taskGroupTitle}>{YELLOW_TASKS.block}</span>
+        </div>
+        {YELLOW_TASKS.items.map(item => (
+          <TaskRow
+            key={item.id}
+            item={item}
+            checked={!!todayData.completedItems?.[item.id]}
+            color="var(--purple)"
+            onToggle={() => onToggle(item.id, true, YELLOW_TASKS.items)}
+          />
+        ))}
+      </div>
+
+      <NoteField
+        value={todayData.noteText || ''}
+        onChange={onNoteChange}
+        onBlur={onNoteBlur}
+        placeholder="Note it here — a different problem, article, video, anything..."
+      />
+
+      {!todayData.done
+        ? <button onClick={onDone} className={styles.doneBtn}>Mark today as done ✓</button>
+        : (
+          <div className={styles.completedCard}>
+            <div className={styles.completedTitle}>Today: done. 🔥</div>
+            <p className={styles.completedBody}>Streak is alive. Go rest now.</p>
+          </div>
+        )
+      }
+    </>
+  )
+}
+
+// ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 
 export default function Tracker() {
   const [view,          setView]          = useState('today')
@@ -141,7 +262,6 @@ export default function Tracker() {
   const [reviewAnswers, setReviewAnswers] = useState({ q1: '', q2: '', q3: '' })
   const [reviewSaved,   setReviewSaved]   = useState(false)
 
-  // load from Supabase on mount
   useEffect(() => {
     async function loadData() {
       const today = todayKey()
@@ -160,7 +280,6 @@ export default function Tracker() {
       allLogs.forEach(log => { his[log.date] = { mode: log.mode, done: log.done } })
       setHistory(his)
 
-      // calculate current streak from last 7 days
       const last7 = getLast7Days()
       let cur = 0
       for (let i = last7.length - 1; i >= 0; i--) {
@@ -168,7 +287,6 @@ export default function Tracker() {
         else break
       }
 
-      // calculate longest streak from full history
       let longest = 0, temp = 0
       Object.keys(his).sort().forEach(date => {
         if (his[date]?.done) { temp++; longest = Math.max(longest, temp) }
@@ -184,7 +302,6 @@ export default function Tracker() {
     loadData()
   }, [])
 
-  // save today to Supabase + recalculate streak in memory
   const persistToday = useCallback(async (data) => {
     await dbUpsertLog(todayKey(), data.mode, data.completedItems, data.done, data.noteText || '')
 
@@ -265,12 +382,13 @@ export default function Tracker() {
 
   return (
     <div className={styles.app}>
+
       {/* HEADER */}
       <header className={styles.header}>
         <div>
           <h1 className={styles.greeting}>{getGreeting()}, Shruti</h1>
           <p className={styles.date}>
-            {new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })}
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
         </div>
         <div className={styles.streakBadge}>
@@ -282,7 +400,7 @@ export default function Tracker() {
 
       {/* NAV */}
       <nav className={styles.nav}>
-        {['today','week','rules','review'].map(v => (
+        {['today', 'week', 'rules', 'review'].map(v => (
           <button
             key={v}
             onClick={() => setView(v)}
@@ -304,9 +422,9 @@ export default function Tracker() {
                 <p className={styles.subtitle}>Pick honestly. Both count.</p>
                 <div className={styles.modeGrid}>
                   {[
-                    { mode:'green',  emoji:'🌱', name:'Green Day',  desc:'Energy online, brain ready',    meta:'90 min · 3 blocks', cls: styles.modeGreen },
-                    { mode:'yellow', emoji:'🌙', name:'Yellow Day', desc:"Low energy, foggy — that's ok", meta:'20 min · 1 thing',   cls: styles.modeYellow },
-                    { mode:'off',    emoji:'😴', name:'Rest Day',   desc:'Sunday or you just need it',    meta:'Fully off',          cls: styles.modeOff },
+                    { mode: 'green',  emoji: '🌱', name: 'Green Day',  desc: 'Energy online, brain ready',    meta: '90 min · 3 blocks', cls: styles.modeGreen },
+                    { mode: 'yellow', emoji: '🌙', name: 'Yellow Day', desc: "Low energy, foggy — that's ok", meta: '20 min · 1 thing',   cls: styles.modeYellow },
+                    { mode: 'off',    emoji: '😴', name: 'Rest Day',   desc: 'Sunday or you just need it',    meta: 'Fully off',          cls: styles.modeOff },
                   ].map(m => (
                     <button key={m.mode} onClick={() => selectMode(m.mode)} className={`${styles.modeCard} ${m.cls}`}>
                       <span className={styles.modeEmoji}>{m.emoji}</span>
@@ -318,128 +436,30 @@ export default function Tracker() {
                 </div>
               </>
             ) : todayData.mode === 'off' ? (
-              <div className={styles.offDay}>
-                <div className={styles.offEmoji}>😴</div>
-                <h2 className={styles.offTitle}>Rest Day</h2>
-                <p className={styles.offBody}>
-                  No LeetCode. No Substack. No LinkedIn.<br />
-                  This is what makes the other 6 days possible.
-                </p>
-                <div className={styles.noteBlock} style={{ textAlign: 'left' }}>
-                  <label className={styles.noteLabel}>Anything you want to note?</label>
-                  <textarea
-                    className={styles.reviewInput}
-                    value={todayData.noteText || ''}
-                    onChange={e => updateNote(e.target.value)}
-                    onBlur={e => saveNote(e.target.value)}
-                    placeholder="Something you read, thought about, or just want to remember..."
-                    rows={2}
-                  />
-                </div>
-                <button onClick={() => setTodayData(null)} className={styles.changeBtn}>Change mode</button>
-              </div>
+              <OffDay
+                noteText={todayData.noteText || ''}
+                onNoteChange={e => updateNote(e.target.value)}
+                onNoteBlur={e => saveNote(e.target.value)}
+                onChangeMode={() => setTodayData(null)}
+              />
+            ) : todayData.mode === 'green' ? (
+              <GreenDay
+                todayData={todayData}
+                onToggle={toggleItem}
+                onNoteChange={e => updateNote(e.target.value)}
+                onNoteBlur={e => saveNote(e.target.value)}
+                onDone={markDone}
+                onChangeMode={() => setTodayData(null)}
+              />
             ) : (
-              <>
-                <div className={styles.modeHeader}>
-                  <span className={todayData.mode === 'green' ? styles.pillGreen : styles.pillPurple}>
-                    {todayData.mode === 'green' ? '🌱 Green Day' : '🌙 Yellow Day'}
-                  </span>
-                  {todayData.done && <span className={styles.pillDone}>✓ Done</span>}
-                  <button onClick={() => setTodayData(null)} className={styles.changeBtn}>change</button>
-                </div>
-
-                {todayData.mode === 'green'
-                  ? GREEN_TASKS.map(group => (
-                    <div key={group.id} className={styles.taskGroup}>
-                      <div className={styles.taskGroupHead}>
-                        <span>{group.emoji}</span>
-                        <span className={styles.taskGroupTitle}>{group.block}</span>
-                        <span className={styles.durationTag}>{group.duration}</span>
-                        {group.type === 'pick-one' && <span className={styles.pickOneTag}>pick one</span>}
-                      </div>
-                      {group.items.map(item => {
-                        const checked = !!todayData.completedItems?.[item.id]
-                        return (
-                          <div
-                            key={item.id}
-                            onClick={() => toggleItem(item.id, group.type === 'pick-one', group.items)}
-                            className={styles.taskRow}
-                          >
-                            <div
-                              className={styles.checkbox}
-                              style={{
-                                borderColor: group.color,
-                                background: checked ? group.color : 'transparent',
-                              }}
-                            >
-                              {checked && <span className={styles.checkMark}>✓</span>}
-                            </div>
-                            <span className={styles.taskLabel} style={{
-                              textDecoration: checked ? 'line-through' : 'none',
-                              color: checked ? 'var(--text4)' : 'var(--text)',
-                            }}>
-                              {item.label}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))
-                  : (
-                    <div className={styles.taskGroup}>
-                      <div className={styles.taskGroupHead}>
-                        <span>{YELLOW_TASKS.emoji}</span>
-                        <span className={styles.taskGroupTitle}>{YELLOW_TASKS.block}</span>
-                      </div>
-                      {YELLOW_TASKS.items.map(item => {
-                        const checked = !!todayData.completedItems?.[item.id]
-                        return (
-                          <div
-                            key={item.id}
-                            onClick={() => toggleItem(item.id, true, YELLOW_TASKS.items)}
-                            className={styles.taskRow}
-                          >
-                            <div className={styles.checkbox} style={{
-                              borderColor: 'var(--purple)',
-                              background: checked ? 'var(--purple)' : 'transparent',
-                            }}>
-                              {checked && <span className={styles.checkMark}>✓</span>}
-                            </div>
-                            <span className={styles.taskLabel} style={{
-                              textDecoration: checked ? 'line-through' : 'none',
-                              color: checked ? 'var(--text4)' : 'var(--text)',
-                            }}>
-                              {item.label}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                }
-
-                <div className={styles.noteBlock}>
-                  <label className={styles.noteLabel}>Anything else you did?</label>
-                  <textarea
-                    className={styles.reviewInput}
-                    value={todayData.noteText || ''}
-                    onChange={e => updateNote(e.target.value)}
-                    onBlur={e => saveNote(e.target.value)}
-                    placeholder="Note it here — a different problem, article, video, anything..."
-                    rows={2}
-                  />
-                </div>
-
-                {!todayData.done
-                  ? <button onClick={markDone} className={styles.doneBtn}>Mark today as done ✓</button>
-                  : (
-                    <div className={styles.completedCard}>
-                      <div className={styles.completedTitle}>Today: done. 🔥</div>
-                      <p className={styles.completedBody}>Streak is alive. Go rest now.</p>
-                    </div>
-                  )
-                }
-              </>
+              <YellowDay
+                todayData={todayData}
+                onToggle={toggleItem}
+                onNoteChange={e => updateNote(e.target.value)}
+                onNoteBlur={e => saveNote(e.target.value)}
+                onDone={markDone}
+                onChangeMode={() => setTodayData(null)}
+              />
             )}
           </div>
         )}
@@ -453,10 +473,10 @@ export default function Tracker() {
               {last7.map(dateStr => {
                 const d       = history[dateStr]
                 const isToday = dateStr === todayKey()
-                const bg      = !d          ? 'var(--border)'
-                              : d.mode==='off' ? 'var(--border2)'
-                              : d.done         ? 'var(--gold)'
-                              :                  'var(--text4)'
+                const bg      = !d             ? 'var(--border)'
+                              : d.mode === 'off' ? 'var(--border2)'
+                              : d.done           ? 'var(--gold)'
+                              :                    'var(--text4)'
                 return (
                   <div key={dateStr} className={styles.heatCol}>
                     <div className={styles.heatCell} style={{
@@ -479,14 +499,14 @@ export default function Tracker() {
               <div key={row.day} className={styles.schedRow}>
                 <span className={styles.schedDay}>{row.day}</span>
                 <span className={styles.schedPill} style={{
-                  background: row.mode==='green'  ? 'rgba(74,222,128,0.12)'
-                            : row.mode==='yellow' ? 'rgba(192,132,252,0.12)'
-                            :                       'rgba(100,100,100,0.12)',
-                  color:      row.mode==='green'  ? 'var(--green)'
-                            : row.mode==='yellow' ? 'var(--purple)'
-                            :                       'var(--text3)',
+                  background: row.mode === 'green'  ? 'rgba(74,222,128,0.12)'
+                            : row.mode === 'yellow' ? 'rgba(192,132,252,0.12)'
+                            :                         'rgba(100,100,100,0.12)',
+                  color:      row.mode === 'green'  ? 'var(--green)'
+                            : row.mode === 'yellow' ? 'var(--purple)'
+                            :                         'var(--text3)',
                 }}>
-                  {row.mode==='green' ? '🌱' : row.mode==='yellow' ? '🌙' : '😴'} {row.mode}
+                  {row.mode === 'green' ? '🌱' : row.mode === 'yellow' ? '🌙' : '😴'} {row.mode}
                 </span>
                 <span className={styles.schedFocus}>{row.focus}</span>
               </div>
@@ -494,9 +514,9 @@ export default function Tracker() {
 
             <div className={styles.statsRow}>
               {[
-                { num: streak.current,                                              label: 'current streak' },
-                { num: streak.longest,                                              label: 'longest streak' },
-                { num: Object.values(history).filter(d => d.done).length,           label: 'total days done' },
+                { num: streak.current,                                             label: 'current streak' },
+                { num: streak.longest,                                             label: 'longest streak' },
+                { num: Object.values(history).filter(d => d.done).length,          label: 'total days done' },
               ].map(s => (
                 <div key={s.label} className={styles.statCard}>
                   <span className={styles.statNum}>{s.num}</span>
@@ -530,9 +550,9 @@ export default function Tracker() {
             <p className={styles.subtitle}>Three questions. Write the answers, don't just think them.</p>
 
             {[
-              { key:'q1', q:'What did I actually do this week?',  hint:'List it out, even small wins.' },
-              { key:'q2', q:'What worked, what didn\'t?',          hint:'Be honest, not harsh.' },
-              { key:'q3', q:'What\'s the one thing for next week?', hint:'Just one.' },
+              { key: 'q1', q: 'What did I actually do this week?',   hint: 'List it out, even small wins.' },
+              { key: 'q2', q: "What worked, what didn't?",           hint: 'Be honest, not harsh.' },
+              { key: 'q3', q: "What's the one thing for next week?", hint: 'Just one.' },
             ].map(item => (
               <div key={item.key} className={styles.reviewBlock}>
                 <div className={styles.reviewQ}>{item.q}</div>
