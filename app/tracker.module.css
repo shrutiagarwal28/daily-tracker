@@ -221,6 +221,10 @@
 .ruleTitle { font-size: 14px; font-weight: 600; color: #f5e6c8; margin-bottom: 4px; }
 .ruleBody  { font-size: 13px; color: var(--text3); line-height: 1.6; font-weight: 300; }
 
+/* ── NOTE ── */
+.noteBlock { margin-bottom: 12px; margin-top: 4px; }
+.noteLabel { display: block; font-size: 12px; color: var(--text4); margin-bottom: 6px; font-style: italic; }
+
 /* ── REVIEW ── */
 .reviewBlock { margin-bottom: 20px; }
 .reviewQ     { font-size: 15px; color: #f5e6c8; font-weight: 500; margin-bottom: 3px; }
