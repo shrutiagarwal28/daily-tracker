@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import styles from './tracker.module.css'
+import { supabase } from '../lib/supabase'
 
 // ─── DATA ────────────────────────────────────────────────────────────────────
 
@@ -103,11 +104,30 @@ function shortDay(dateStr) {
 
 // ─── STORAGE ─────────────────────────────────────────────────────────────────
 
-function lsGet(key) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null } catch { return null }
+async function dbGetToday(date) {
+  const { data } = await supabase.from('daily_logs').select('*').eq('date', date).single()
+  return data
 }
-function lsSet(key, val) {
-  try { localStorage.setItem(key, JSON.stringify(val)) } catch {}
+
+async function dbGetAllLogs() {
+  const { data } = await supabase.from('daily_logs').select('date, mode, done')
+  return data || []
+}
+
+async function dbUpsertLog(date, mode, completedItems, done) {
+  await supabase.from('daily_logs').upsert(
+    { date, mode, completed_items: completedItems, done, updated_at: new Date().toISOString() },
+    { onConflict: 'date' }
+  )
+}
+
+async function dbGetReview(date) {
+  const { data } = await supabase.from('reviews').select('*').eq('date', date).single()
+  return data
+}
+
+async function dbUpsertReview(date, q1, q2, q3) {
+  await supabase.from('reviews').upsert({ date, q1, q2, q3 }, { onConflict: 'date' })
 }
 
 // ─── COMPONENT ───────────────────────────────────────────────────────────────
@@ -121,25 +141,55 @@ export default function Tracker() {
   const [reviewAnswers, setReviewAnswers] = useState({ q1: '', q2: '', q3: '' })
   const [reviewSaved,   setReviewSaved]   = useState(false)
 
-  // load from localStorage
+  // load from Supabase on mount
   useEffect(() => {
-    const td  = lsGet(`daily:${todayKey()}`)
-    const his = lsGet('history')     || {}
-    const str = lsGet('streak')      || { current: 0, longest: 0 }
-    const rev = lsGet(`review:${todayKey()}`)
-    if (td)  setTodayData(td)
-    setHistory(his)
-    setStreak(str)
-    if (rev) { setReviewAnswers(rev); setReviewSaved(true) }
-    setLoading(false)
+    async function loadData() {
+      const today = todayKey()
+
+      const [todayLog, allLogs, review] = await Promise.all([
+        dbGetToday(today),
+        dbGetAllLogs(),
+        dbGetReview(today),
+      ])
+
+      if (todayLog) {
+        setTodayData({ mode: todayLog.mode, completedItems: todayLog.completed_items, done: todayLog.done })
+      }
+
+      const his = {}
+      allLogs.forEach(log => { his[log.date] = { mode: log.mode, done: log.done } })
+      setHistory(his)
+
+      // calculate current streak from last 7 days
+      const last7 = getLast7Days()
+      let cur = 0
+      for (let i = last7.length - 1; i >= 0; i--) {
+        if (his[last7[i]]?.done) cur++
+        else break
+      }
+
+      // calculate longest streak from full history
+      let longest = 0, temp = 0
+      Object.keys(his).sort().forEach(date => {
+        if (his[date]?.done) { temp++; longest = Math.max(longest, temp) }
+        else temp = 0
+      })
+      setStreak({ current: cur, longest })
+
+      if (review) { setReviewAnswers({ q1: review.q1, q2: review.q2, q3: review.q3 }); setReviewSaved(true) }
+
+      setLoading(false)
+    }
+
+    loadData()
   }, [])
 
-  // save today + recalculate streak
-  const persistToday = useCallback((data) => {
-    lsSet(`daily:${todayKey()}`, data)
+  // save today to Supabase + recalculate streak in memory
+  const persistToday = useCallback(async (data) => {
+    await dbUpsertLog(todayKey(), data.mode, data.completedItems, data.done)
+
     const newHistory = { ...history, [todayKey()]: { mode: data.mode, done: data.done } }
     setHistory(newHistory)
-    lsSet('history', newHistory)
 
     const last7 = getLast7Days()
     let cur = 0
@@ -149,7 +199,6 @@ export default function Tracker() {
     }
     const newStreak = { current: cur, longest: Math.max(streak.longest, cur) }
     setStreak(newStreak)
-    lsSet('streak', newStreak)
   }, [history, streak.longest])
 
   const selectMode = (mode) => {
@@ -188,8 +237,8 @@ export default function Tracker() {
     persistToday(data)
   }
 
-  const saveReview = () => {
-    lsSet(`review:${todayKey()}`, reviewAnswers)
+  const saveReview = async () => {
+    await dbUpsertReview(todayKey(), reviewAnswers.q1, reviewAnswers.q2, reviewAnswers.q3)
     setReviewSaved(true)
   }
 
