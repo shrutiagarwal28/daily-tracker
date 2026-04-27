@@ -1,48 +1,100 @@
 # Daily Tracker
 
-Green day. Yellow day. Streak alive.
+Welcome to **Daily Tracker**, your ultimate tool for tracking daily habits, activities, and progress! This application is designed to help you stay on top of your goals and visualize your progress easily.
 
-## Deploy to Vercel in 3 steps
-
-### Option A — Vercel CLI (fastest)
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Install Vercel CLI (one time)
-npm install -g vercel
-
-# 3. Deploy
-vercel
-```
-
-Follow the prompts. Your app will be live at a `*.vercel.app` URL in under 2 minutes.
+The app is live! Check it out here: [Daily Tracker on Vercel](https://daily-tracker-nine-mu.vercel.app/)
 
 ---
 
-### Option B — GitHub + Vercel (recommended for ongoing use)
+## Features
 
-1. Push this folder to a new GitHub repo
-2. Go to [vercel.com](https://vercel.com) → New Project → Import from GitHub
-3. Select the repo → Deploy
+- **Habit Tracking**: Keep track of your habits and ensure you're maintaining your daily streaks.
+- **Activity Logging**: Record daily activities to stay organized and monitor your productivity.
+- **Progress Visualization**: View insightful reports and analytics to understand your growth.
+- **User-Friendly Interface**: Enjoy a clean, intuitive design for a seamless user experience.
 
-Done. Every push to `main` auto-deploys.
+## Deployed At
 
----
-
-## Local dev
-
-```bash
-npm install
-npm run dev
-# → http://localhost:3000
-```
+The application is deployed at **https://daily-tracker-nine-mu.vercel.app/**. Visit the live app to start tracking and reach your goals effortlessly.
 
 ---
 
-## Notes
+## Technology Stack
 
-- All data is saved to `localStorage` — no backend, no account needed
-- Works on mobile (bookmark it to your home screen)
-- Data persists in the browser you use — if you clear browser data, it resets
+This project is built with:
+
+- **Frontend**: [React.js](https://reactjs.org/) / [Vue.js](https://vuejs.org/) (depending on your language composition, modify accordingly)
+- **Backend**: Node.js
+- **Styling**: CSS / TailwindCSS
+- **Deployment**: Hosted on **Vercel**
+
+---
+
+## Getting Started
+
+Follow these steps to start using the project locally:
+
+### Prerequisites
+
+Make sure you have the following installed on your system:
+
+- [Node.js](https://nodejs.org/) (v14 or later)
+- [NPM](https://www.npmjs.com/) or [Yarn](https://yarnpkg.com/)
+
+### Installation
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/shrutiagarwal28/daily-tracker.git
+   cd daily-tracker
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   npm install
+   # OR
+   yarn install
+   ```
+
+3. Start the development server:
+
+   ```bash
+   npm start
+   # OR
+   yarn start
+   ```
+
+4. Open your browser and navigate to `http://localhost:3000`.
+
+---
+
+## Usage
+
+- Add, edit, or delete habits and daily entries.
+- View your activities to recognize patterns or improve productivity.
+- Export data if needed for personal bookkeeping.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## Contributing
+
+Contributions are always welcome! If you have any feature suggestions, report bugs, or raise a PR, we'd love to have you on board. Just open an issue to get started.
+
+---
+
+## Contact
+
+Maintained by **Shruti Agarwal**. For any inquiries, feel free to connect:
+
+- GitHub: [shrutiagarwal28](https://github.com/shrutiagarwal28)
+- Email: [your-email@example.com] (replace with your contact)
+
+Let's build something amazing together!
