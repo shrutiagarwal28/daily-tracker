@@ -114,9 +114,9 @@ async function dbGetAllLogs() {
   return data || []
 }
 
-async function dbUpsertLog(date, mode, completedItems, done) {
+async function dbUpsertLog(date, mode, completedItems, done, noteText) {
   await supabase.from('daily_logs').upsert(
-    { date, mode, completed_items: completedItems, done, updated_at: new Date().toISOString() },
+    { date, mode, completed_items: completedItems, done, note_text: noteText, updated_at: new Date().toISOString() },
     { onConflict: 'date' }
   )
 }
@@ -153,7 +153,7 @@ export default function Tracker() {
       ])
 
       if (todayLog) {
-        setTodayData({ mode: todayLog.mode, completedItems: todayLog.completed_items, done: todayLog.done })
+        setTodayData({ mode: todayLog.mode, completedItems: todayLog.completed_items, done: todayLog.done, noteText: todayLog.note_text || '' })
       }
 
       const his = {}
@@ -186,7 +186,7 @@ export default function Tracker() {
 
   // save today to Supabase + recalculate streak in memory
   const persistToday = useCallback(async (data) => {
-    await dbUpsertLog(todayKey(), data.mode, data.completedItems, data.done)
+    await dbUpsertLog(todayKey(), data.mode, data.completedItems, data.done, data.noteText || '')
 
     const newHistory = { ...history, [todayKey()]: { mode: data.mode, done: data.done } }
     setHistory(newHistory)
@@ -202,8 +202,19 @@ export default function Tracker() {
   }, [history, streak.longest])
 
   const selectMode = (mode) => {
-    const data = { mode, completedItems: {}, done: false }
+    const data = { mode, completedItems: {}, done: false, noteText: '' }
     setTodayData(data)
+    persistToday(data)
+  }
+
+  const updateNote = (text) => {
+    if (!todayData) return
+    setTodayData(prev => ({ ...prev, noteText: text }))
+  }
+
+  const saveNote = (text) => {
+    if (!todayData) return
+    const data = { ...todayData, noteText: text }
     persistToday(data)
   }
 
@@ -314,6 +325,17 @@ export default function Tracker() {
                   No LeetCode. No Substack. No LinkedIn.<br />
                   This is what makes the other 6 days possible.
                 </p>
+                <div className={styles.noteBlock} style={{ textAlign: 'left' }}>
+                  <label className={styles.noteLabel}>Anything you want to note?</label>
+                  <textarea
+                    className={styles.reviewInput}
+                    value={todayData.noteText || ''}
+                    onChange={e => updateNote(e.target.value)}
+                    onBlur={e => saveNote(e.target.value)}
+                    placeholder="Something you read, thought about, or just want to remember..."
+                    rows={2}
+                  />
+                </div>
                 <button onClick={() => setTodayData(null)} className={styles.changeBtn}>Change mode</button>
               </div>
             ) : (
@@ -395,6 +417,18 @@ export default function Tracker() {
                     </div>
                   )
                 }
+
+                <div className={styles.noteBlock}>
+                  <label className={styles.noteLabel}>Anything else you did?</label>
+                  <textarea
+                    className={styles.reviewInput}
+                    value={todayData.noteText || ''}
+                    onChange={e => updateNote(e.target.value)}
+                    onBlur={e => saveNote(e.target.value)}
+                    placeholder="Note it here — a different problem, article, video, anything..."
+                    rows={2}
+                  />
+                </div>
 
                 {!todayData.done
                   ? <button onClick={markDone} className={styles.doneBtn}>Mark today as done ✓</button>
