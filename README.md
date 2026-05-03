@@ -16,7 +16,7 @@ The app is live! Check it out here: [Daily Tracker on Vercel](https://daily-trac
 ## Deployed At
 
 The application is deployed at **https://daily-tracker-nine-mu.vercel.app/**. Visit the live app to start tracking and reach your goals effortlessly.
-
+full scope journal coming up
 ---
 
 ## Technology Stack
